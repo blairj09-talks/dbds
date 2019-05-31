@@ -13,7 +13,6 @@ library(ggplot2)
 library(tidypredict)
 library(modeldb)
 library(nycflights13)
-library(parsnip)
 ```
 
 # Setup
