@@ -20,6 +20,7 @@ Establish a connection to the database. For this example, an in memory SQLite
 database created through the `RSQLite` package.
 ```{r connection}
 con <- dbConnect(RSQLite::SQLite(), ":memory:")
+class(con)
 ```
 
 Transfer some data into the database.
@@ -30,6 +31,8 @@ dbWriteTable(con, "airlines", airlines)
 dbWriteTable(con, "planes", planes)
 dbWriteTable(con, "weather", weather)
 dbWriteTable(con, "cars", mtcars)
+
+dbListTables(con)
 ```
 
 # Import, Tidy, and Transform
