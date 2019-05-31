@@ -1,0 +1,155 @@
+---
+title: "Database data science"
+output: html_notebook
+---
+
+```{r setup}
+# Packages ----
+library(dplyr)
+library(dbplyr)
+library(DBI)
+library(dbplot)
+library(ggplot2)
+library(tidypredict)
+library(modeldb)
+library(nycflights13)
+library(parsnip)
+```
+
+# Setup
+Establish a connection to the database. For this example, an in memory SQLite
+database created through the `RSQLite` package.
+```{r connection}
+con <- dbConnect(RSQLite::SQLite(), ":memory:")
+```
+
+Transfer some data into the database.
+```{r}
+dbWriteTable(con, "flights", flights)
+dbWriteTable(con, "airports", airports)
+dbWriteTable(con, "airlines", airlines)
+dbWriteTable(con, "planes", planes)
+dbWriteTable(con, "weather", weather)
+dbWriteTable(con, "cars", mtcars)
+```
+
+# Import, Tidy, and Transform
+Create reference to a database table.
+```{r}
+flights_db <- tbl(con, "flights")
+class(flights_db)
+```
+
+What happens when I run take the first 6 rows of `flights_db`?
+```{r}
+flights_db %>% 
+  head()
+```
+
+```{r}
+flights_db %>% 
+  head() %>% 
+  show_query()
+```
+
+See how the generated SQL code changes from one provider to another.
+```{r}
+flights_db %>% 
+  head() %>% 
+  sql_render(con = simulate_mssql())
+```
+
+Calculate average delays by carrier.
+```{r}
+delays <- flights_db %>% 
+  group_by(carrier) %>% 
+  summarise(total_flights = n(),
+            avg_dep_delay = mean(dep_delay, na.rm = TRUE),
+            avg_arr_delay = mean(arr_delay, na.rm = TRUE)) %>% 
+  mutate(avg_delay_diff = avg_arr_delay - avg_dep_delay) %>% 
+  arrange(desc(avg_delay_diff))
+```
+
+```{r}
+delays %>% 
+  show_query()
+```
+
+```{r}
+class(delays)
+```
+
+```{r}
+results <- collect(delays)
+class(results)
+results
+```
+
+Join carrier details
+```{r}
+airlines_db <- tbl(con, "airlines")
+```
+
+```{r}
+detailed_delays <- delays %>% 
+  left_join(airlines_db) %>% 
+  select(name, everything())
+```
+
+```{r}
+detailed_delays %>% 
+  show_query()
+```
+
+```{r}
+detailed_delays
+```
+
+# Visualize
+Create bar plot of carrier counts.
+```{r}
+p <- flights_db %>% 
+  dbplot_bar(carrier)
+
+p
+```
+
+```{r}
+p +
+  theme_minimal() +
+  labs(title = "Carrier Counts",
+       y = "Count")
+```
+
+```{r}
+flights_db %>% 
+  db_compute_count(carrier)
+```
+
+# Model
+Define a model in R.
+```{r}
+lm_fit <- lm(mpg ~ hp + cyl, data = mtcars)
+lm_fit
+```
+
+Translate the R model into SQL using the `tidypredict` package.
+```{r}
+tidypredict_sql(lm_fit, con)
+```
+
+Predict in the database.
+```{r}
+cars_db <- tbl(con, "cars")
+tidypredict_to_column(cars_db, lm_fit) %>% 
+  select(mpg, fit)
+```
+
+Fit a model in the database using the `modeldb` package.
+```{r}
+db_fit <- cars_db %>% 
+  select(mpg, hp, cyl) %>% 
+  linear_regression_db(mpg)
+
+db_fit
+```
